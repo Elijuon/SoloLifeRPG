@@ -114,3 +114,16 @@ function completeQuest(questId) {
     
     updateGameInterface();
 }
+// Отправка данных боту при создании персонажа
+Telegram.WebApp.sendData(JSON.stringify({
+    action: "create_character",
+    name: "ИмяПерсонажа",
+    avatar: "1"
+}));
+
+// При завершении квеста
+Telegram.WebApp.sendData(JSON.stringify({
+    action: "complete_quest",
+    questId: 1,
+    xp: 10
+}));
