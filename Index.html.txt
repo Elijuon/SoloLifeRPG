@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SoloLifeRPG</title>
+    <!-- Подключаем SDK Telegram WebApp -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        /* Основные стили */
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #1a1a2e;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            margin: 0;
+        }
+
+        /* Стили для создания персонажа */
+        .screen {
+            display: none;
+        }
+        #character-creation {
+            display: block;
+        }
+        
+        .avatar-option {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            margin: 10px;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: transform 0.3s;
+        }
+        .avatar-option:hover {
+            transform: scale(1.1);
+        }
+        .avatar-option.selected {
+            border-color: #f39c12;
+        }
+
+        /* Стили игрового интерфейса */
+        #character-display {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        #character-avatar {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 3px solid #f39c12;
+        }
+        
+        .xp-bar {
+            background: #333;
+            border-radius: 10px;
+            height: 20px;
+            margin: 15px 0;
+            overflow: hidden;
+        }
+        #current-xp {
+            background: #4ecca3;
+            height: 100%;
+            width: 0%;
+            transition: width 0.5s;
+        }
+        
+        .quest {
+            background: #16213e;
+            border-radius: 8px;
+            padding: 12px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        button {
+            background: #f39c12;
+            color: black;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+        }
+        button:hover {
+            background: #e67e22;
+        }
+        
+        input[type="text"] {
+            padding: 10px;
+            margin: 10px 0;
+            width: 80%;
+            border-radius: 5px;
+            border: none;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Экран создания персонажа -->
+    <div id="character-creation" class="screen">
+        <h1>🎭 Создание персонажа</h1>
+        
+        <h3>Выберите аватар:</h3>
+        <div>
+            <img src="https://i.imgur.com/1.png" class="avatar-option" onclick="selectAvatar(1)">
+            <img src="https://i.imgur.com/2.png" class="avatar-option" onclick="selectAvatar(2)">
+            <img src="https://i.imgur.com/3.png" class="avatar-option" onclick="selectAvatar(3)">
+        </div>
+        
+        <h3>Введите имя персонажа:</h3>
+        <input type="text" id="character-name" placeholder="Введите имя (минимум 2 символа)" maxlength="20">
+        
+        <button onclick="createCharacter()">Начать игру</button>
+    </div>
+
+    <!-- Основной игровой интерфейс -->
+    <div id="game-interface" class="screen">
+        <div id="character-display">
+            <img id="character-avatar" src="">
+            <h2 id="character-name-display"></h2>
+        </div>
+        
+        <p>Уровень: <span id="level">1</span></p>
+        
+        <div class="xp-bar">
+            <div id="current-xp"></div>
+        </div>
+        <p>Опыт: <span id="xp">0</span>/100</p>
+        
+        <h3>🎯 Доступные квесты</h3>
+        <div id="quests-container"></div>
+    </div>
+
+    <script>
+        // Инициализация Telegram WebApp
+        const tg = window.Telegram.WebApp;
+        tg.expand(); // Растягиваем на весь экран
+        
+        // Данные персонажа
+        let character = {
+            name: "",
+            avatar: 1,
+            xp: 0,
+            level: 1
+        };
+        
+        // Выбор аватара
+        function selectAvatar(avatarId) {
+            document.querySelectorAll('.avatar-option').forEach(el => {
+                el.classList.remove('selected');
+            });
+            event.target.classList.add('selected');
+            character.avatar = avatarId;
+        }
+        
+        // Создание персонажа
+        function createCharacter() {
+            const name = document.getElementById('character-name').value.trim();
+            
+            if (name.length < 2) {
+                tg.showPopup({
+                    title: "Ошибка",
+                    message: "Имя должно содержать минимум 2 символа!"
+                });
+                return;
+            }
+            
+            character.name = name;
+            
+            // Сохраняем данные
+            tg.CloudStorage.setItem('character', JSON.stringify(character));
+            
+            // Переключаем экран
+            showGameInterface();
+            
+            // Отправляем данные боту
+            tg.sendData(JSON.stringify({
+                action: 'create_character',
+                character: character
+            }));
+        }
+        
+        // Показ игрового интерфейса
+        function showGameInterface() {
+            // Загружаем сохранённые данные
+            tg.CloudStorage.getItem('character', (err, data) => {
+                if (data) character = JSON.parse(data);
+                
+                // Обновляем интерфейс
+                document.getElementById('character-avatar').src = `https://i.imgur.com/${character.avatar}.png`;
+                document.getElementById('character-name-display').textContent = character.name;
+                document.getElementById('level').textContent = character.level;
+                document.getElementById('xp').textContent = character.xp;
+                document.getElementById('current-xp').style.width = `${character.xp}%`;
+                
+                // Переключаем экраны
+                document.getElementById('character-creation').style.display = 'none';
+                document.getElementById('game-interface').style.display = 'block';
+                
+                // Загружаем квесты
+                loadQuests();
+            });
+        }
+        
+        // Загрузка квестов
+        function loadQuests() {
+            const quests = [
+                { id: 1, name: "Сделать 10 отжиманий", xp: 10, type: "💪" },
+                { id: 2, name: "Прочитать 15 минут", xp: 7, type: "📚" },
+                { id: 3, name: "Лечь спать до 23:00", xp: 5, type: "⏰" },
+                { id: 4, name: "Выпить 1.5л воды", xp: 3, type: "💧" }
+            ];
+            
+            let html = '';
+            quests.forEach(quest => {
+                html += `
+                <div class="quest">
+                    <span>${quest.type} ${quest.name}</span>
+                    <button onclick="completeQuest(${quest.id}, ${quest.xp})">
+                        +${quest.xp}XP
+                    </button>
+                </div>`;
+            });
+            
+            document.getElementById('quests-container').innerHTML = html;
+        }
+        
+        // Завершение квеста
+        function completeQuest(id, xp) {
+            character.xp += xp;
+            
+            // Проверка повышения уровня
+            if (character.xp >= 100) {
+                character.level++;
+                character.xp = 0;
+                tg.showPopup({
+                    title: "🎉 Уровень UP!",
+                    message: `Теперь ты уровня ${character.level}!`
+                });
+            }
+            
+            // Обновляем интерфейс
+            document.getElementById('xp').textContent = character.xp;
+            document.getElementById('level').textContent = character.level;
+            document.getElementById('current-xp').style.width = `${character.xp}%`;
+            
+            // Сохраняем прогресс
+            tg.CloudStorage.setItem('character', JSON.stringify(character));
+            
+            // Отправляем данные боту
+            tg.sendData(JSON.stringify({
+                action: 'complete_quest',
+                questId: id,
+                xp: character.xp,
+                level: character.level
+            }));
+            
+            // Вибрация
+            tg.HapticFeedback.impactOccurred('light');
+        }
+        
+        // При загрузке проверяем, есть ли сохранённый персонаж
+        tg.CloudStorage.getItem('character', (err, data) => {
+            if (data) {
+                showGameInterface();
+            } else {
+                document.getElementById('character-creation').style.display = 'block';
+            }
+        });
+    </script>
+</body>
+</html>
