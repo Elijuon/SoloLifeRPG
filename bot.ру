@@ -1,20 +1,142 @@
 import telebot
 from telebot import types
+import sqlite3
+import json
 
-bot = telebot.TeleBot("ВАШ_ТОКЕН_БОТА")  # Замените на токен от @BotFather
+# --- 1. Инициализация бота ---
+bot = telebot.TeleBot("8116032969:AAGa-05A_4lJfeh5mkRXk132-6Wk-1awNAg")  # Замените на токен от @BotFather
 
+# --- 2. Настройка базы данных ---
+def init_db():
+    """Создает таблицу для хранения данных игроков"""
+    conn = sqlite3.connect('game.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS players (
+            user_id INTEGER PRIMARY KEY,
+            name TEXT,
+            avatar TEXT,
+            xp INTEGER DEFAULT 0,
+            level INTEGER DEFAULT 1,
+            completed_quests TEXT DEFAULT '[]'
+        )
+    ''')
+    conn.commit()
+    conn.close()
+
+# --- 3. Команда /start ---
 @bot.message_handler(commands=['start'])
 def start(message):
-    # Создаем кнопку
+    """Обработчик команды /start с кнопкой WebApp"""
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    button = types.KeyboardButton("🎮 Открыть игру", web_app=types.WebAppInfo(url="https://elijuon.github.io/SoloLifeRPG/"))
+    
+    # Кнопка для открытия игры
+    button = types.KeyboardButton(
+        text="🎮 Открыть игру", 
+        web_app=types.WebAppInfo(url="https://elijuon.github.io/SoloLifeRPG/")
+    )
     markup.add(button)
     
-    # Отправляем сообщение с кнопкой
+    # Приветственное сообщение
     bot.send_message(
         chat_id=message.chat.id,
-        text="Добро пожаловать в SoloLifeRPG! Нажмите кнопку ниже, чтобы начать.",
+        text="""Добро пожаловать в SoloLifeRPG! 
+Нажмите кнопку ниже, чтобы начать игру.""",
         reply_markup=markup
     )
 
-bot.polling()
+# --- 4. Обработка данных из WebApp ---
+@bot.message_handler(content_types=['web_app_data'])
+def handle_web_app(message):
+    """Принимает данные из игры и сохраняет прогресс"""
+    try:
+        data = json.loads(message.web_app_data.data)
+        user_id = message.chat.id
+        
+        # Подключаемся к БД
+        conn = sqlite3.connect('game.db')
+        cursor = conn.cursor()
+        
+        # --- 4.1. Создание персонажа ---
+        if data.get('action') == 'create_character':
+            cursor.execute('''
+                INSERT OR REPLACE INTO players 
+                (user_id, name, avatar, xp, level) 
+                VALUES (?, ?, ?, 0, 1)
+            ''', (user_id, data['name'], data['avatar']))
+            
+            bot.send_message(
+                user_id, 
+                f"👤 Персонаж {data['name']} создан! Откройте игру снова."
+            )
+        
+        # --- 4.2. Завершение квеста ---
+        elif data.get('action') == 'complete_quest':
+            # Получаем текущие данные игрока
+            cursor.execute('SELECT * FROM players WHERE user_id = ?', (user_id,))
+            player = cursor.fetchone()
+            
+            if player:
+                # Обновляем XP и уровень
+                new_xp = player[3] + data['xp']
+                new_level = player[4]
+                
+                if new_xp >= 100:
+                    new_level += 1
+                    new_xp = 0
+                    bot.send_message(user_id, f"🎉 Поздравляем! Вы достигли уровня {new_level}!")
+                
+                # Обновляем список выполненных квестов
+                completed_quests = json.loads(player[5])
+                completed_quests.append(data['questId'])
+                
+                # Сохраняем в БД
+                cursor.execute('''
+                    UPDATE players 
+                    SET xp = ?, level = ?, completed_quests = ?
+                    WHERE user_id = ?
+                ''', (new_xp, new_level, json.dumps(completed_quests), user_id))
+                
+                bot.send_message(
+                    user_id, 
+                    f"✅ Квест выполнен! +{data['xp']} XP."
+                )
+        
+        conn.commit()
+        conn.close()
+        
+    except Exception as e:
+        print("Ошибка:", e)
+        bot.send_message(message.chat.id, "⚠️ Произошла ошибка. Попробуйте позже.")
+
+# --- 5. Команда /profile ---
+@bot.message_handler(commands=['profile'])
+def profile(message):
+    """Показывает прогресс игрока"""
+    conn = sqlite3.connect('game.db')
+    cursor = conn.cursor()
+    cursor.execute('SELECT name, xp, level FROM players WHERE user_id = ?', (message.chat.id,))
+    player = cursor.fetchone()
+    
+    if player:
+        name, xp, level = player
+        bot.send_message(
+            message.chat.id,
+            f"""📊 Ваш профиль:
+👤 Имя: {name}
+⚡ XP: {xp}/100
+🏆 Уровень: {level}"""
+        )
+    else:
+        bot.send_message(
+            message.chat.id, 
+            "Вы ещё не создали персонажа! Нажмите /start."
+        )
+    
+    conn.close()
+
+# --- 6. Запуск бота ---
+if __name__ == "__main__":
+    init_db()  # Создаем БД при старте
+    print("Бот запущен...")
+    bot.polling()
